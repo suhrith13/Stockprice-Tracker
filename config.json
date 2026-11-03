@@ -1,0 +1,6 @@
+{
+  "tickers": ["RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", "^NSEI"],
+  "log_file": "docs/predictions.csv",
+  "market_tz": "Asia/Kolkata",
+  "market_open": "09:15"
+}
