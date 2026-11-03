@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prediction Track Record</title>
+<meta name="description" content="Daily stock predictions logged before market open and scored after close, with a tamper-evident log verified in your browser.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #f6f7f9; --surface: #ffffff; --ink: #14171a; --muted: #5f6b76; --line: #e3e7eb;
+    --blue: #2563eb; --orange: #d97706; --green: #15803d; --red: #c2410c; --grey: #94a3b8;
+    --good-bg: #ecfdf3; --bad-bg: #fff1ec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1116; --surface: #161b22; --ink: #e6edf3; --muted: #8b949e; --line: #262d36;
+      --blue: #60a5fa; --orange: #f59e0b; --green: #4ade80; --red: #fb7c4c; --grey: #6b7785;
+      --good-bg: #0f2a1b; --bad-bg: #2d160e;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 15px/1.5 Inter, system-ui, -apple-system, sans-serif; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 32px 16px 64px; }
+  header h1 { font-size: 28px; margin: 0 0 6px; letter-spacing: -0.02em; }
+  header p { margin: 0; color: var(--muted); max-width: 680px; }
+  .meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+  .pill { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px;
+          border-radius: 999px; border: 1px solid var(--line); background: var(--surface);
+          font-size: 13px; color: var(--muted); }
+  .pill.ok { background: var(--good-bg); color: var(--green); border-color: transparent; font-weight: 500; }
+  .pill.bad { background: var(--bad-bg); color: var(--red); border-color: transparent; font-weight: 500; }
+  .mono { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12px; }
+  .tabs { display: flex; gap: 6px; margin: 28px 0 16px; overflow-x: auto; padding-bottom: 4px; }
+  .tab { border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+         padding: 7px 14px; border-radius: 8px; cursor: pointer; font: inherit; font-size: 14px;
+         white-space: nowrap; }
+  .tab[aria-selected="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .tile { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  .tile .label { font-size: 13px; color: var(--muted); }
+  .tile .value { font-size: 26px; font-weight: 600; letter-spacing: -0.02em; margin-top: 4px; }
+  .tile .sub { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .verdict { margin-top: 12px; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--line);
+             background: var(--surface); font-size: 14px; }
+  .verdict strong { margin-right: 6px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+          padding: 18px 18px 12px; margin-top: 16px; }
+  .card h2 { font-size: 16px; margin: 0; }
+  .card .hint { color: var(--muted); font-size: 13px; margin: 2px 0 12px; }
+  .chart { position: relative; height: 280px; }
+  .chart.short { height: 200px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  #recent-table td:nth-child(2), #recent-table th:nth-child(2) { text-align: left; }
+  th { color: var(--muted); font-weight: 500; font-size: 13px; }
+  .table-scroll { overflow-x: auto; }
+  .up { color: var(--green); } .down { color: var(--red); }
+  .hit { color: var(--green); font-weight: 600; } .miss { color: var(--red); font-weight: 600; }
+  details { margin-top: 16px; color: var(--muted); font-size: 14px; }
+  details summary { cursor: pointer; color: var(--ink); font-weight: 500; }
+  details li { margin: 6px 0; }
+  .empty { text-align: center; padding: 48px 16px; color: var(--muted); }
+  footer { margin-top: 40px; color: var(--muted); font-size: 13px; }
+  [hidden] { display: none !important; }
+  @media (max-width: 760px) {
+    .tiles { grid-template-columns: repeat(2, 1fr); }
+    header h1 { font-size: 23px; }
+    .chart { height: 240px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Daily Prediction Track Record</h1>
+    <p>Every weekday a model predicts each stock's closing price <strong>before the market opens</strong>.
+       After the close the real price is recorded and compared. Results are measured against a naive guess
+       ("today's close = yesterday's close"), which the model must beat to show any skill.</p>
+    <div class="meta">
+      <span class="pill" id="integrity">Verifying log…</span>
+      <span class="pill" id="updated">Loading…</span>
+    </div>
+  </header>
+
+  <div id="empty" class="empty" hidden>
+    No predictions yet. The first forecasts are logged at 8:00 AM IST on the next trading day
+    and scored after the 3:30 PM close.
+  </div>
+
+  <main id="main" hidden>
+    <nav class="tabs" id="tabs" role="tablist"></nav>
+
+    <section class="tiles">
+      <div class="tile"><div class="label">Days scored</div><div class="value" id="t-n">–</div>
+        <div class="sub" id="t-n-sub"></div></div>
+      <div class="tile"><div class="label">Model avg error</div><div class="value" id="t-model">–</div>
+        <div class="sub" id="t-model-sub"></div></div>
+      <div class="tile"><div class="label">Naive baseline avg error</div><div class="value" id="t-base">–</div>
+        <div class="sub">lower is better</div></div>
+      <div class="tile"><div class="label">Direction called correctly</div><div class="value" id="t-hit">–</div>
+        <div class="sub" id="t-hit-sub"></div></div>
+    </section>
+    <div class="verdict" id="verdict"></div>
+
+    <section id="ticker-view">
+      <div class="card">
+        <h2>Predicted vs actual closing price</h2>
+        <p class="hint">Solid line = what really happened. Dashed blue line = what the model predicted that morning.</p>
+        <div class="chart"><canvas id="c-price"></canvas></div>
+      </div>
+      <div class="card">
+        <h2>How far off each day</h2>
+        <p class="hint">Percent error per day. Above zero = predicted too high, below = too low.</p>
+        <div class="chart short"><canvas id="c-err"></canvas></div>
+      </div>
+      <div class="card">
+        <h2>Direction accuracy over time</h2>
+        <p class="hint">Share of days the model correctly called UP or DOWN. The dotted line is a coin flip.</p>
+        <div class="chart short"><canvas id="c-hit"></canvas></div>
+      </div>
+    </section>
+
+    <section id="all-view" class="card">
+      <h2>All stocks</h2>
+      <p class="hint">Pick a stock above to see its charts.</p>
+      <div class="table-scroll"><table id="summary-table"></table></div>
+    </section>
+
+    <section class="card" id="today-card">
+      <h2>Awaiting today's close</h2>
+      <p class="hint">Logged before the open. These get scored after the market closes.</p>
+      <div class="table-scroll"><table id="pending-table"></table></div>
+    </section>
+
+    <section class="card">
+      <h2>Recent results</h2>
+      <p class="hint">The latest scored predictions, newest first.</p>
+      <div class="table-scroll"><table id="recent-table"></table></div>
+    </section>
+
+    <details>
+      <summary>How you can check this isn't faked</summary>
+      <ul>
+        <li>Every prediction is stored with the exact time it was made, which is before the market opens.</li>
+        <li>Each row carries a SHA-256 fingerprint of itself plus the row before it. Changing any past
+            prediction breaks every fingerprint after it. <strong>Your browser just re-checked all of them.</strong></li>
+        <li>The log lives in a public GitHub repository, and GitHub's commit history independently shows
+            when each prediction was published.</li>
+        <li>Actual closing prices can be checked against any public market data source.</li>
+      </ul>
+      <p>Latest fingerprint: <span class="mono" id="hash"></span></p>
+      <p><a href="predictions.csv">Download the raw log (CSV)</a></p>
+    </details>
+  </main>
+
+  <footer>Educational project. Not financial advice. Past accuracy does not predict future accuracy.</footer>
+</div>
+
+<script>
+const HASH_FIELDS = ["id","logged_at_utc","target_date","ticker","last_close","pred_close",
+                     "pred_direction","baseline_close","source"];
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const $ = id => document.getElementById(id);
+const fmt = (v, d = 2) => Number(v).toLocaleString("en-IN", {minimumFractionDigits: d, maximumFractionDigits: d});
+const charts = {};
+
+function parseCSV(text) {
+  const lines = text.trim().split(/\r?\n/);
+  const head = lines.shift().split(",");
+  return lines.filter(Boolean).map(l => {
+    const cells = l.split(","); const o = {};
+    head.forEach((h, i) => o[h] = (cells[i] ?? "").replace(/^"|"$/g, ""));
+    return o;
+  });
+}
+
+async function sha256(s) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function verifyChain(rows) {
+  let prev = "GENESIS";
+  for (const r of rows) {
+    const payload = HASH_FIELDS.map(f => r[f]).join("|") + "|" + prev;
+    if (r.prev_hash !== prev || await sha256(payload) !== r.row_hash) return {ok: false, row: r};
+    prev = r.row_hash;
+  }
+  return {ok: true, last: prev};
+}
+
+function erfc(x) { // Abramowitz-Stegun approximation
+  const t = 1 / (1 + 0.5 * Math.abs(x));
+  const y = t * Math.exp(-x*x - 1.26551223 + t*(1.00002368 + t*(0.37409196 + t*(0.09678418 +
+            t*(-0.18628806 + t*(0.27886807 + t*(-1.13520398 + t*(1.48851587 +
+            t*(-0.82215223 + t*0.17087277)))))))));
+  return x >= 0 ? y : 2 - y;
+}
+
+function summarize(rows) {
+  const n = rows.length;
+  if (!n) return {n: 0};
+  let me = 0, be = 0, hits = 0, beats = 0;
+  for (const r of rows) {
+    const a = +r.actual_close;
+    const m = Math.abs(+r.pred_close - a) / a * 100, b = Math.abs(+r.baseline_close - a) / a * 100;
+    me += m; be += b; if (m < b) beats++;
+    if (r.pred_direction === r.actual_direction) hits++;
+  }
+  const z = (hits - 0.5 * n) / Math.sqrt(0.25 * n);
+  return {n, model: me / n, base: be / n, hit: hits / n * 100, hits, beats: beats / n * 100,
+          p: 0.5 * erfc(z / Math.SQRT2)};
+}
+
+function verdict(s) {
+  if (s.n < 60) return ["Too early to judge.", `Only ${s.n} scored predictions so far. A fair verdict needs at least 60 to 100 trading days, because a few lucky days prove nothing.`];
+  if (s.model < s.base && s.p < 0.05)
+    return ["Evidence of skill.", `Lower error than the naive guess and a direction hit rate unlikely to be luck (p = ${s.p.toFixed(3)}). Edges can fade, so tracking continues.`];
+  return ["No evidence of skill yet.", "The model is not reliably beating the naive 'no change' guess. It should not be used to trade real money."];
+}
+
+function fillTiles(s) {
+  $("t-n").textContent = s.n;
+  $("t-n-sub").textContent = s.n ? "trading days with a result" : "";
+  $("t-model").textContent = s.n ? fmt(s.model, 2) + "%" : "–";
+  $("t-model-sub").textContent = s.n ? `beat the baseline on ${Math.round(s.beats)}% of days` : "";
+  $("t-model").style.color = s.n ? (s.model < s.base ? css("--green") : css("--red")) : "";
+  $("t-base").textContent = s.n ? fmt(s.base, 2) + "%" : "–";
+  $("t-hit").textContent = s.n ? Math.round(s.hit) + "%" : "–";
+  $("t-hit-sub").textContent = s.n ? `${s.hits} of ${s.n} · coin flip = 50%` : "";
+  const [head, body] = s.n ? verdict(s) : ["No results yet.", "Scores appear after the first market close."];
+  $("verdict").innerHTML = `<strong>${head}</strong>${body}`;
+}
+
+function baseOpts(yTitle, extra = {}) {
+  return Object.assign({
+    responsive: true, maintainAspectRatio: false, animation: false,
+    interaction: {mode: "index", intersect: false},
+    plugins: {legend: {labels: {color: css("--muted"), boxWidth: 14, usePointStyle: true}}},
+    scales: {
+      x: {ticks: {color: css("--muted"), maxRotation: 0, autoSkipPadding: 16}, grid: {display: false}},
+      y: {ticks: {color: css("--muted")}, grid: {color: css("--line")},
+          title: {display: !!yTitle, text: yTitle, color: css("--muted")}}
+    }
+  }, extra);
+}
+
+function draw(id, cfg) { charts[id]?.destroy(); charts[id] = new Chart($(id), cfg); }
+
+function renderTicker(rows) {
+  const labels = rows.map(r => r.target_date);
+  draw("c-price", {type: "line", data: {labels, datasets: [
+      {label: "Actual close", data: rows.map(r => +r.actual_close), borderColor: css("--ink"),
+       borderWidth: 2, pointRadius: rows.length > 40 ? 0 : 3, tension: 0},
+      {label: "Predicted", data: rows.map(r => +r.pred_close), borderColor: css("--blue"),
+       borderDash: [6, 4], borderWidth: 1.6, pointRadius: rows.length > 40 ? 0 : 3, tension: 0}]},
+    options: baseOpts("Price (₹)")});
+
+  const err = rows.map(r => (+r.pred_close - +r.actual_close) / +r.actual_close * 100);
+  draw("c-err", {type: "bar", data: {labels, datasets: [{label: "Error %", data: err,
+      backgroundColor: err.map(e => e >= 0 ? css("--blue") : css("--orange"))}]},
+    options: baseOpts("% off", {plugins: {legend: {display: false},
+      tooltip: {callbacks: {label: c => ` ${c.parsed.y > 0 ? "+" : ""}${c.parsed.y.toFixed(2)}%`}}}})});
+
+  let hits = 0;
+  const cum = rows.map((r, i) => { hits += r.pred_direction === r.actual_direction; return hits / (i + 1) * 100; });
+  draw("c-hit", {type: "line", data: {labels, datasets: [
+      {label: "Cumulative hit rate", data: cum, borderColor: css("--green"), borderWidth: 2,
+       pointRadius: rows.length > 40 ? 0 : 3, tension: 0},
+      {label: "Coin flip (50%)", data: labels.map(() => 50), borderColor: css("--red"),
+       borderDash: [2, 4], borderWidth: 1.4, pointRadius: 0}]},
+    options: baseOpts("% correct", {scales: {
+      x: {ticks: {color: css("--muted"), maxRotation: 0, autoSkipPadding: 16}, grid: {display: false}},
+      y: {min: 0, max: 100, ticks: {color: css("--muted")}, grid: {color: css("--line")}}}})});
+}
+
+function dirCell(d) { return `<span class="${d === "UP" ? "up" : "down"}">${d === "UP" ? "▲ UP" : "▼ DOWN"}</span>`; }
+
+async function main() {
+  let rows;
+  try {
+    const res = await fetch("predictions.csv", {cache: "no-store"});
+    if (!res.ok) throw new Error();
+    rows = parseCSV(await res.text());
+  } catch { rows = []; }
+  if (!rows.length) { $("empty").hidden = false; $("integrity").hidden = true; $("updated").hidden = true; return; }
+
+  const v = await verifyChain(rows);
+  const pill = $("integrity");
+  pill.className = "pill " + (v.ok ? "ok" : "bad");
+  pill.textContent = v.ok ? `✓ All ${rows.length} predictions verified in your browser`
+                          : `✕ Log altered at row ${v.row.id} (${v.row.ticker} ${v.row.target_date})`;
+  $("hash").textContent = v.ok ? v.last : "chain broken";
+
+  const stamps = rows.flatMap(r => [r.logged_at_utc, r.evaluated_at_utc]).filter(Boolean).sort();
+  const last = new Date(stamps[stamps.length - 1]);
+  $("updated").textContent = "Updated " + last.toLocaleString("en-IN", {dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata"}) + " IST";
+
+  const scored = rows.filter(r => r.actual_close && r.actual_direction !== "NO_TRADING");
+  const pending = rows.filter(r => !r.actual_close);
+  const tickers = [...new Set(rows.map(r => r.ticker))];
+  const byT = Object.fromEntries(tickers.map(t => [t, scored.filter(r => r.ticker === t)
+                                                   .sort((a, b) => a.target_date.localeCompare(b.target_date))]));
+  $("main").hidden = false;
+
+  // All-stocks summary table
+  const sumRows = tickers.map(t => [t, summarize(byT[t])]).concat([["All stocks", summarize(scored)]]);
+  $("summary-table").innerHTML = "<tr><th>Stock</th><th>Days</th><th>Model error</th><th>Baseline error</th><th>Hit rate</th></tr>" +
+    sumRows.map(([t, s]) => s.n ? `<tr><td>${t}</td><td>${s.n}</td>
+      <td style="color:${s.model < s.base ? css("--green") : css("--red")}">${fmt(s.model)}%</td>
+      <td>${fmt(s.base)}%</td><td>${Math.round(s.hit)}%</td></tr>`
+      : `<tr><td>${t}</td><td>0</td><td>–</td><td>–</td><td>–</td></tr>`).join("");
+
+  // Pending
+  $("today-card").hidden = !pending.length;
+  $("pending-table").innerHTML = "<tr><th>Stock</th><th>For date</th><th>Last close</th><th>Predicted close</th><th>Call</th></tr>" +
+    pending.map(r => `<tr><td>${r.ticker}</td><td>${r.target_date}</td><td>${fmt(r.last_close)}</td>
+      <td>${fmt(r.pred_close)}</td><td>${dirCell(r.pred_direction)}</td></tr>`).join("");
+
+  // Recent
+  const recent = [...scored].sort((a, b) => b.target_date.localeCompare(a.target_date) || a.ticker.localeCompare(b.ticker)).slice(0, 25);
+  $("recent-table").innerHTML = "<tr><th>Date</th><th>Stock</th><th>Predicted</th><th>Actual</th><th>Off by</th><th>Call</th><th>Result</th></tr>" +
+    recent.map(r => { const e = (+r.pred_close - +r.actual_close) / +r.actual_close * 100; const hit = r.pred_direction === r.actual_direction;
+      return `<tr><td>${r.target_date}</td><td>${r.ticker}</td><td>${fmt(r.pred_close)}</td><td>${fmt(r.actual_close)}</td>
+        <td>${e > 0 ? "+" : ""}${e.toFixed(2)}%</td><td>${dirCell(r.pred_direction)}</td>
+        <td class="${hit ? "hit" : "miss"}">${hit ? "✓ Right" : "✕ Wrong"}</td></tr>`; }).join("");
+
+  // Tabs
+  const tabs = $("tabs");
+  const select = t => {
+    [...tabs.children].forEach(b => b.setAttribute("aria-selected", b.dataset.t === t));
+    const isAll = t === "__all";
+    $("ticker-view").hidden = isAll; $("all-view").hidden = !isAll;
+    fillTiles(summarize(isAll ? scored : byT[t]));
+    if (!isAll) renderTicker(byT[t]);
+  };
+  ["__all", ...tickers].forEach(t => {
+    const b = document.createElement("button");
+    b.className = "tab"; b.role = "tab"; b.dataset.t = t;
+    b.textContent = t === "__all" ? "All stocks" : t.replace(".NS", "").replace("^NSEI", "NIFTY 50");
+    b.onclick = () => select(t); tabs.appendChild(b);
+  });
+  select("__all");
+}
+main();
+</script>
+</body>
+</html>
