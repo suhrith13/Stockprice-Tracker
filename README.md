@@ -26,7 +26,7 @@ It does **not** place trades. It only predicts, records and scores.
    ```
    *(GitHub's web uploader skips hidden folders, so use git or GitHub Desktop.)*
 3. **Allow the workflow to save results:** go to Settings → Actions → General → Workflow permissions, choose **Read and write permissions**, and save.
-4. **Turn on the webpage:** go to Settings → Pages. Under Source, pick **Deploy from a branch**, then branch `main` and folder **`/docs`**, and save. After a minute your page is live at `https://<your-username>.github.io/stock-prediction-tracker/`.
+4. **Turn on the webpage:** go to Settings → Pages. Under Source, pick **Deploy from a branch**, then branch `main` and folder **`/docs`**, and save. After a minute your page is live at `(https://suhrith13.github.io/Stockprice-Tracker/)`.
 5. **Test it now:** open the Actions tab, select **Daily predictions**, then **Run workflow**, and pick `evaluate`. This confirms everything installs and runs. It's fine if there's nothing to evaluate yet. The first real predictions appear on the next weekday morning.
 
 That's it. From then on it runs itself.
