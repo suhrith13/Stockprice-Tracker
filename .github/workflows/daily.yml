@@ -1,0 +1,60 @@
+name: Daily predictions
+
+on:
+  schedule:
+    # GitHub cron uses UTC. IST = UTC + 5:30.
+    - cron: "30 2 * * 1-5"   # 08:00 IST, Mon–Fri: predict (before the 09:15 open)
+    - cron: "0 11 * * 1-5"   # 16:30 IST, Mon–Fri: evaluate + update charts (after the 15:30 close)
+  workflow_dispatch:         # lets you run it manually from the Actions tab
+    inputs:
+      step:
+        description: "What to run"
+        type: choice
+        options: [evaluate, predict]
+        default: evaluate
+
+permissions:
+  contents: write            # needed to commit the updated log and charts
+
+concurrency:
+  group: daily-tracker
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Predict (morning)
+        if: github.event.schedule == '30 2 * * 1-5' || inputs.step == 'predict'
+        run: python tracker.py predict
+
+      - name: Evaluate and rebuild charts (evening)
+        if: github.event.schedule == '0 11 * * 1-5' || inputs.step == 'evaluate'
+        run: |
+          python tracker.py evaluate
+          python tracker.py report || true
+
+      - name: Check the log is intact
+        run: python tracker.py verify
+
+      - name: Commit results
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add docs/ report/ || true
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "Daily update $(TZ=Asia/Kolkata date +'%Y-%m-%d %H:%M IST')"
+            git pull --rebase
+            git push
+          fi
